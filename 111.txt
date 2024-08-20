@@ -1,0 +1,52 @@
+import java.util.concurrent.TimeUnit;
+
+class FunnelRateLimiter {
+    private int capacity;  // 漏斗容量
+    private float rate;    // 水流速度（每秒流出的量）
+    private float water;   // 当前水量
+
+    public FunnelRateLimiter(int capacity, float rate) {
+        this.capacity = capacity;
+        this.rate = rate;
+        this.water = 0;
+    }
+
+    public boolean allowRequest() {
+        water -= rate * TimeUnit.SECONDS.toMillis(1);  // 每秒流出一定量
+        water = Math.max(0, water);  // 水量不能为负
+
+        if (water + 1 <= capacity) {  // 尝试加水，如果不超过容量则允许
+            water++;
+            return true;
+        }
+        return false;  // 超过容量，不允许
+    }
+
+    public static void main(String[] args) {
+        FunnelRateLimiter limiter = new FunnelRateLimiter(10, 2);  // 容量 10，每秒流出 2
+
+        // 模拟突发流量
+        for (int i = 0; i < 5; i++) {
+            if (limiter.allowRequest()) {
+                System.out.println("Request " + i + " allowed");
+            } else {
+                System.out.println("Request " + i + " denied");
+            }
+        }
+
+        try {
+            Thread.sleep(2000);  // 等待 2 秒，让漏斗流出一些水
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        // 再次尝试请求
+        for (int i = 5; i < 10; i++) {
+            if (limiter.allowRequest()) {
+                System.out.println("Request " + i + " allowed");
+            } else {
+                System.out.println("Request " + i + " denied");
+            }
+        }
+    }
+}
