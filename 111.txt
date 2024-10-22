@@ -1,52 +1,16 @@
-import java.util.concurrent.TimeUnit;
-
-class FunnelRateLimiter {
-    private int capacity;  // 漏斗容量
-    private float rate;    // 水流速度（每秒流出的量）
-    private float water;   // 当前水量
-
-    public FunnelRateLimiter(int capacity, float rate) {
-        this.capacity = capacity;
-        this.rate = rate;
-        this.water = 0;
-    }
-
-    public boolean allowRequest() {
-        water -= rate * TimeUnit.SECONDS.toMillis(1);  // 每秒流出一定量
-        water = Math.max(0, water);  // 水量不能为负
-
-        if (water + 1 <= capacity) {  // 尝试加水，如果不超过容量则允许
-            water++;
-            return true;
-        }
-        return false;  // 超过容量，不允许
-    }
-
-    public static void main(String[] args) {
-        FunnelRateLimiter limiter = new FunnelRateLimiter(10, 2);  // 容量 10，每秒流出 2
-
-        // 模拟突发流量
-        for (int i = 0; i < 5; i++) {
-            if (limiter.allowRequest()) {
-                System.out.println("Request " + i + " allowed");
-            } else {
-                System.out.println("Request " + i + " denied");
-            }
-        }
-
-        try {
-            Thread.sleep(2000);  // 等待 2 秒，让漏斗流出一些水
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
-        // 再次尝试请求
-        for (int i = 5; i < 10; i++) {
-            if (limiter.allowRequest()) {
-                System.out.println("Request " + i + " allowed");
-            } else {
-                System.out.println("Request " + i + " denied");
-            }
-        }
-    }
-}
+curl 'https://runcode.bejson.com/try_run?action=get_result&token=6dd3146b-38a0-4cf6-84f7-fb964d32a7a5' \
+  -H 'accept: application/json, text/javascript, */*; q=0.01' \
+  -H 'accept-language: zh-CN,zh;q=0.9,zh-TW;q=0.8,en;q=0.7' \
+  -H 'cache-control: no-cache' \
+  -H 'dnt: 1' \
+  -H 'origin: https://www.bejson.com' \
+  -H 'pragma: no-cache' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://www.bejson.com/' \
+  -H 'sec-ch-ua: "Not)A;Brand";v="99", "Google Chrome";v="127", "Chromium";v="127"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-site' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
