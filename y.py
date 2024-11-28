@@ -1,76 +1,70 @@
 import cv2
 import numpy as np
-import time
 
-def is_motion_detected(video_path):
-    cap = cv2.VideoCapture(video_path)
+# 初始化视频捕捉
+cap = cv2.VideoCapture('your_video_file.mp4')
 
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    interval = int(fps)  # 每秒读取一帧
-    prev_frame = None
-    change_detected_time = 0  # 记录画面变化时间
-    motion_threshold = 3  # 持续变化阈值（秒）
+# 检查视频是否打开
+if not cap.isOpened():
+    print("Error: Could not open video.")
+    exit()
 
-    while cap.isOpened():
-        # 跳过到下一个关键帧（模拟每秒读取一帧）
-        for _ in range(interval - 1):
-            cap.grab()
+# 设置视频读取的帧率，默认是每秒读取一帧
+fps = cap.get(cv2.CAP_PROP_FPS)
+frame_interval = int(fps)  # 每秒读取的帧数
 
-        ret, frame = cap.read()
-        if not ret:
-            break
+# 初始化背景减除器
+fgbg = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=16, detectShadows=True)
 
-        # 将帧转换为灰度图像
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+# 用于存储上次帧与当前帧的差异
+frame_diff_count = 0
+motion_detected = False
 
-        if prev_frame is not None:
-            # 使用ORB检测特征点并匹配
-            orb = cv2.ORB_create()
-            kp1, des1 = orb.detectAndCompute(prev_frame, None)
-            kp2, des2 = orb.detectAndCompute(gray, None)
+# 上一帧的时间戳
+last_timestamp = -1
 
-            if des1 is not None and des2 is not None:
-                # 特征点匹配
-                bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-                matches = bf.match(des1, des2)
+while True:
+    ret = cap.grab()  # 只读取下一帧，不解码
+    if not ret:
+        break
 
-                # 计算匹配点的变动量
-                if len(matches) > 0:
-                    distances = [m.distance for m in matches]
-                    avg_distance = np.mean(distances)
+    timestamp = cap.get(cv2.CAP_PROP_POS_FRAMES)  # 获取当前帧数
+    if timestamp % frame_interval != 0:
+        continue  # 只处理每秒钟的第一帧
 
-                    # 全局变化检测（摄像头转动） - 忽略全局特征变化
-                    if avg_distance < 30:  # 距离小于阈值，视为整体移动，忽略
-                        change_detected_time = max(0, change_detected_time - 1)
-                        continue
+    ret, frame = cap.read()
+    if not ret:
+        break
 
-            # 检测局部变化（帧差法）
-            diff = cv2.absdiff(prev_frame, gray)
-            non_zero_count = np.count_nonzero(diff > 50)  # 变化较大的像素点数量
-            non_zero_ratio = non_zero_count / gray.size
+    # 转换为灰度图，减少计算量
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            if non_zero_ratio > 0.01:  # 局部变化超过1%
-                change_detected_time += 1
-            else:
-                change_detected_time = max(0, change_detected_time - 1)
+    # 使用背景减除法计算前景
+    fg_mask = fgbg.apply(gray)
 
-        # 更新前一帧
-        prev_frame = gray
+    # 计算前景掩码的变化，阈值设定用于避免噪声影响
+    _, fg_mask = cv2.threshold(fg_mask, 200, 255, cv2.THRESH_BINARY)
 
-        # 判断是否持续变化超过阈值
-        if change_detected_time >= motion_threshold:
-            print("TRUE")
-        else:
-            print("FALSE")
+    # 计算前景图像中的白色像素（即运动区域）
+    motion_area = np.sum(fg_mask) / 255  # 计算有多少白色像素
 
-        # 显示帧以调试（可以注释掉）
-        # cv2.imshow("Frame", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+    # 如果运动区域大于一定的阈值，认为有物体移动
+    if motion_area > 5000:  # 可以调整该值来控制灵敏度
+        frame_diff_count += 1
+    else:
+        frame_diff_count = 0
 
-    cap.release()
-    cv2.destroyAllWindows()
+    # 如果有超过3秒的连续变化
+    if frame_diff_count > 3 * fps:  # 3秒连续变化
+        print("True")
+        break
 
-# 使用示例
-video_path = "your_video.mp4"  # 或者用摄像头：video_path = 0
-is_motion_detected(video_path)
+    # 更新上一帧时间戳
+    last_timestamp = timestamp
+
+# 如果整个视频都没有检测到足够的变化
+if frame_diff_count == 0:
+    print("False")
+
+cap.release()
+cv2.destroyAllWindows()
