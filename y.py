@@ -1,70 +1,69 @@
 import cv2
 import numpy as np
 
-# 初始化视频捕捉
-cap = cv2.VideoCapture('your_video_file.mp4')
+def detect_motion(video_path):
+    cap = cv2.VideoCapture(video_path)
 
-# 检查视频是否打开
-if not cap.isOpened():
-    print("Error: Could not open video.")
-    exit()
+    if not cap.isOpened():
+        print("无法打开视频文件")
+        return
 
-# 设置视频读取的帧率，默认是每秒读取一帧
-fps = cap.get(cv2.CAP_PROP_FPS)
-frame_interval = int(fps)  # 每秒读取的帧数
-
-# 初始化背景减除器
-fgbg = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=16, detectShadows=True)
-
-# 用于存储上次帧与当前帧的差异
-frame_diff_count = 0
-motion_detected = False
-
-# 上一帧的时间戳
-last_timestamp = -1
-
-while True:
-    ret = cap.grab()  # 只读取下一帧，不解码
+    # 读取第一帧，作为初始背景
+    ret, prev_frame = cap.read()
     if not ret:
-        break
+        print("无法读取视频帧")
+        cap.release()
+        return
 
-    timestamp = cap.get(cv2.CAP_PROP_POS_FRAMES)  # 获取当前帧数
-    if timestamp % frame_interval != 0:
-        continue  # 只处理每秒钟的第一帧
+    prev_frame_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+    consecutive_changes = 0  # 用于记录连续变化的秒数
+    fps = int(cap.get(cv2.CAP_PROP_FPS))  # 获取帧率
+    sec = 1
 
-    ret, frame = cap.read()
-    if not ret:
-        break
+    while True:
+        # 跳过每秒的其他帧
+        for _ in range(fps - 1):
+            cap.grab()
+        
+        # 读取当前秒的第一帧
+        ret, frame = cap.read()
+        if not ret:
+            break  # 结束条件：视频读取结束
 
-    # 转换为灰度图，减少计算量
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # 转为灰度图
+        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # 使用背景减除法计算前景
-    fg_mask = fgbg.apply(gray)
+        # 计算帧间差分
+        frame_diff = cv2.absdiff(prev_frame_gray, frame_gray)
 
-    # 计算前景掩码的变化，阈值设定用于避免噪声影响
-    _, fg_mask = cv2.threshold(fg_mask, 200, 255, cv2.THRESH_BINARY)
+        # 计算变化区域面积
+        _, diff_thresh = cv2.threshold(frame_diff, 25, 255, cv2.THRESH_BINARY)
+        motion_area = cv2.countNonZero(diff_thresh)
 
-    # 计算前景图像中的白色像素（即运动区域）
-    motion_area = np.sum(fg_mask) / 255  # 计算有多少白色像素
+        # 使用直方图计算相似度，排除摄像头转动影响
+        hist_prev = cv2.calcHist([prev_frame_gray], [0], None, [256], [0, 256])
+        hist_curr = cv2.calcHist([frame_gray], [0], None, [256], [0, 256])
+        similarity = cv2.compareHist(hist_prev, hist_curr, cv2.HISTCMP_CORREL)
 
-    # 如果运动区域大于一定的阈值，认为有物体移动
-    if motion_area > 5000:  # 可以调整该值来控制灵敏度
-        frame_diff_count += 1
-    else:
-        frame_diff_count = 0
+        # 如果变化区域大且直方图相似性低，判断为有物体移动
+        if motion_area > 500 and similarity < 0.9:
+            consecutive_changes += 1
+        else:
+            consecutive_changes = 0
 
-    # 如果有超过3秒的连续变化
-    if frame_diff_count > 3 * fps:  # 3秒连续变化
-        print("True")
-        break
+        # 如果连续变化超过3秒，打印True并结束程序
+        if consecutive_changes >= 3:
+            print("True")
+            cap.release()
+            return
 
-    # 更新上一帧时间戳
-    last_timestamp = timestamp
+        # 更新上一帧
+        prev_frame_gray = frame_gray
+        sec += 1
 
-# 如果整个视频都没有检测到足够的变化
-if frame_diff_count == 0:
+    # 如果遍历完整个视频没有检测到连续变化
     print("False")
+    cap.release()
 
-cap.release()
-cv2.destroyAllWindows()
+# 使用方法：传入视频路径
+detect_motion("path_to_video.mp4")
